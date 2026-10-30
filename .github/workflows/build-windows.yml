@@ -77,6 +77,13 @@ jobs:
       - uses: microsoft/setup-msbuild@v2
         if: steps.cache.outputs.cache-hit != 'true'
 
+      # Project64 comprueba el formato con clang-format al terminar la compilación, y la
+      # versión del runner puede formatear distinto que la de sus desarrolladores.
+      - name: Aplicar formato de código
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: call emulators\project64\Source\Script\clang.cmd format
+
       - name: Compilar
         if: steps.cache.outputs.cache-hit != 'true'
         working-directory: emulators/project64
@@ -105,7 +112,8 @@ jobs:
 
   dolphin:
     name: Dolphin (GameCube / Wii)
-    runs-on: windows-2022
+    # Dolphin exige Visual Studio 2026, que viene en la imagen windows-2025.
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
 
