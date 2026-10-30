@@ -1,0 +1,15 @@
+[submodule "emulators/project64"]
+	path = emulators/project64
+	url = https://github.com/project64/project64.git
+	branch = develop
+	shallow = true
+[submodule "emulators/dolphin"]
+	path = emulators/dolphin
+	url = https://github.com/dolphin-emu/dolphin.git
+	branch = master
+	shallow = true
+[submodule "emulators/cemu"]
+	path = emulators/cemu
+	url = https://github.com/cemu-project/Cemu.git
+	branch = main
+	shallow = true

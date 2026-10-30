@@ -1,0 +1,258 @@
+name: Compilar para Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Los emuladores solo se recompilan cuando cambia el commit de su submódulo:
+# el resultado se guarda en la caché de Actions con el SHA del submódulo como clave.
+# Así un cambio en el frontend no vuelve a gastar ~1 h de compilación en Windows.
+
+jobs:
+  frontend:
+    name: Frontend (Qt)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+          cache: true
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compilar
+        run: |
+          cmake -S frontend -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Pruebas
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Empaquetar
+        run: |
+          cmake --install build --prefix staging
+          windeployqt --release --no-compiler-runtime --no-opengl-sw staging/UnifiedEmu.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          path: staging/
+
+  project64:
+    name: Project64 (N64)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit del submódulo
+        id: sub
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD:emulators/project64)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar compilación en caché
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: staging
+          key: project64-win32-${{ steps.sub.outputs.sha }}
+
+      - name: Descargar código de Project64
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: git submodule update --init --recursive --depth 1 emulators/project64
+
+      - uses: microsoft/setup-msbuild@v2
+        if: steps.cache.outputs.cache-hit != 'true'
+
+      - name: Compilar
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: emulators/project64
+        run: msbuild Project64.sln /m /verbosity:minimal /p:Configuration=Release /p:Platform=Win32
+
+      - name: Empaquetar
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          call emulators\project64\Source\Script\package_zip.cmd project64.zip Win32 || exit /b 1
+          robocopy emulators\project64\Bin\Package staging /E /NFL /NDL /NJH /NJS
+          if %ERRORLEVEL% GEQ 8 exit /b 1
+          exit /b 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project64
+          path: staging/
+
+  dolphin:
+    name: Dolphin (GameCube / Wii)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit del submódulo
+        id: sub
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD:emulators/dolphin)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar compilación en caché
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: staging
+          key: dolphin-x64-${{ steps.sub.outputs.sha }}
+
+      - name: Descargar código de Dolphin
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: git submodule update --init --recursive --depth 1 emulators/dolphin
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          arch: x64
+
+      - name: Compilar
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: emulators/dolphin
+        run: |
+          cmake --preset ninja-release-x64 -DENABLE_AUTOUPDATE=OFF
+          cmake --build --preset ninja-build-release-x64
+
+      - name: Empaquetar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          $bin = "emulators/dolphin/build/release/x64/Binaries"
+          New-Item -ItemType Directory -Force staging | Out-Null
+          # Sys y Licenses pueden ser enlaces simbólicos: se copian desde el origen.
+          Get-ChildItem $bin -Exclude Sys, Licenses, COPYING, *.pdb, *.ilk |
+            Copy-Item -Destination staging -Recurse -Force
+          Copy-Item emulators/dolphin/Data/Sys staging/Sys -Recurse
+          Copy-Item emulators/dolphin/LICENSES staging/Licenses -Recurse
+          Copy-Item emulators/dolphin/COPYING staging/COPYING
+          # portable.txt: Dolphin guarda su configuración junto al ejecutable.
+          New-Item -ItemType File staging/portable.txt | Out-Null
+          if (-not (Test-Path staging/Dolphin.exe)) { throw "No se generó Dolphin.exe" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dolphin
+          path: staging/
+
+  cemu:
+    name: Cemu (Wii U)
+    runs-on: windows-2022
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit del submódulo
+        id: sub
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD:emulators/cemu)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar compilación en caché
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: staging
+          key: cemu-x64-${{ steps.sub.outputs.sha }}
+
+      - name: Descargar código de Cemu
+        if: steps.cache.outputs.cache-hit != 'true'
+        # vcpkg necesita su historial completo; el resto de submódulos se clonan superficiales.
+        run: git submodule update --init --recursive --recommend-shallow emulators/cemu
+
+      - name: Caché de paquetes vcpkg
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: vcpkg-cache
+          key: cemu-vcpkg-${{ hashFiles('emulators/cemu/vcpkg.json') }}
+          restore-keys: cemu-vcpkg-
+
+      - name: Compilar
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: emulators/cemu
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          ./dependencies/vcpkg/bootstrap-vcpkg.bat
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=release
+          cmake --build build --config release
+
+      - name: Empaquetar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          New-Item -ItemType Directory -Force staging | Out-Null
+          Get-ChildItem emulators/cemu/bin -Exclude *.pdb, *.ilk |
+            Copy-Item -Destination staging -Recurse -Force
+          Rename-Item staging/Cemu_release.exe Cemu.exe
+          Copy-Item emulators/cemu/LICENSE.txt staging/LICENSE.txt
+          # Carpeta "portable": Cemu guarda su configuración junto al ejecutable.
+          New-Item -ItemType Directory -Force staging/portable | Out-Null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cemu
+          path: staging/
+
+  package:
+    name: Paquete final
+    needs: [frontend, project64, dolphin, cemu]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend
+          path: dist/UnifiedEmu
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: project64
+          path: dist/UnifiedEmu/emulators/Project64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dolphin
+          path: dist/UnifiedEmu/emulators/Dolphin
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cemu
+          path: dist/UnifiedEmu/emulators/Cemu
+
+      - name: Añadir licencias y README
+        run: |
+          Copy-Item LICENSE dist/UnifiedEmu/LICENSE.txt
+          Copy-Item README.md dist/UnifiedEmu/README.md
+          foreach ($exe in "Project64/Project64.exe", "Dolphin/Dolphin.exe", "Cemu/Cemu.exe") {
+            if (-not (Test-Path "dist/UnifiedEmu/emulators/$exe")) { throw "Falta $exe" }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedEmu-windows
+          path: dist/
+
+      - name: Crear ZIP
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: Compress-Archive -Path dist/UnifiedEmu -DestinationPath UnifiedEmu-${{ github.ref_name }}-windows.zip
+
+      - name: Publicar versión
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: UnifiedEmu-${{ github.ref_name }}-windows.zip

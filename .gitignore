@@ -1,0 +1,7 @@
+/build/
+/staging/
+/dist/
+/frontend/build/
+CMakeUserPresets.json
+.vs/
+*.user
