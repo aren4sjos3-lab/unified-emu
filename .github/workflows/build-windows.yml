@@ -269,6 +269,9 @@ jobs:
         run: |
           Copy-Item LICENSE dist/UnifiedEmu/LICENSE.txt
           Copy-Item README.md dist/UnifiedEmu/README.md
+          # Los artefactos no conservan carpetas vacías: Cemu solo es portable si existe "portable".
+          New-Item -ItemType Directory -Force dist/UnifiedEmu/emulators/Cemu/portable | Out-Null
+          Set-Content dist/UnifiedEmu/emulators/Cemu/portable/LEEME.txt "Cemu guarda aquí su configuración, partidas y claves."
           foreach ($exe in "Project64/Project64.exe", "Dolphin/Dolphin.exe", "Cemu/Cemu.exe") {
             if (-not (Test-Path "dist/UnifiedEmu/emulators/$exe")) { throw "Falta $exe" }
           }
