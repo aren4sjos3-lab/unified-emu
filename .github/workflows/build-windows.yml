@@ -9,7 +9,8 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # No se cancela la ejecución anterior: así los emuladores que terminen bien quedan en caché.
+  cancel-in-progress: false
 
 # Los emuladores solo se recompilan cuando cambia el commit de su submódulo:
 # el resultado se guarda en la caché de Actions con el SHA del submódulo como clave.
@@ -79,7 +80,14 @@ jobs:
       - name: Compilar
         if: steps.cache.outputs.cache-hit != 'true'
         working-directory: emulators/project64
-        run: msbuild Project64.sln /m /verbosity:minimal /p:Configuration=Release /p:Platform=Win32
+        run: |
+          msbuild Project64.sln /m /verbosity:minimal /p:Configuration=Release /p:Platform=Win32 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/build.log" -Append
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Mostrar errores de compilación
+        if: failure()
+        shell: bash
+        run: .github/scripts/annotate-log.sh "$RUNNER_TEMP/build.log" "Project64"
 
       - name: Empaquetar
         if: steps.cache.outputs.cache-hit != 'true'
@@ -126,8 +134,15 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         working-directory: emulators/dolphin
         run: |
-          cmake --preset ninja-release-x64 -DENABLE_AUTOUPDATE=OFF
-          cmake --build --preset ninja-build-release-x64
+          cmake --preset ninja-release-x64 -DENABLE_AUTOUPDATE=OFF 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/build.log" -Append
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build --preset ninja-build-release-x64 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/build.log" -Append
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Mostrar errores de compilación
+        if: failure()
+        shell: bash
+        run: .github/scripts/annotate-log.sh "$RUNNER_TEMP/build.log" "Dolphin"
 
       - name: Empaquetar
         if: steps.cache.outputs.cache-hit != 'true'
@@ -187,9 +202,17 @@ jobs:
         working-directory: emulators/cemu
         run: |
           New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
-          ./dependencies/vcpkg/bootstrap-vcpkg.bat
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=release
-          cmake --build build --config release
+          ./dependencies/vcpkg/bootstrap-vcpkg.bat 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/build.log" -Append
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=release 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/build.log" -Append
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build --config release 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/build.log" -Append
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Mostrar errores de compilación
+        if: failure()
+        shell: bash
+        run: .github/scripts/annotate-log.sh "$RUNNER_TEMP/build.log" "Cemu"
 
       - name: Empaquetar
         if: steps.cache.outputs.cache-hit != 'true'
