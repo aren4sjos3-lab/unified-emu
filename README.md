@@ -23,7 +23,11 @@ Descarga el ZIP de la última versión en
 
 Cada push a `main` lanza el flujo **Compilar para Windows** en GitHub Actions; el paquete de
 cada compilación está en la pestaña **Actions** → la ejecución → artefacto
-**UnifiedEmu-windows**. Al crear un tag `vX.Y.Z` se publica además una versión en Releases.
+**UnifiedEmu-windows**.
+
+Para publicar una versión nueva, cambia el número en `project(UnifiedEmu VERSION x.y.z)`
+de `frontend/CMakeLists.txt` y súbelo a `main`: la CI crea el tag `vx.y.z` y la versión en
+Releases con el ZIP.
 
 ### Requisitos
 
