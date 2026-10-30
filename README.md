@@ -17,9 +17,13 @@ desde su código fuente. El frontend (`frontend/`) está escrito en C++ con Qt 6
 
 ## Descargar
 
-Cada push a `main` lanza el flujo **Compilar para Windows** en GitHub Actions. Al terminar,
-el paquete completo está en la pestaña **Actions** → la ejecución → artefacto
-**UnifiedEmu-windows**. Si creas un tag `vX.Y.Z`, además se publica un ZIP en **Releases**.
+Descarga el ZIP de la última versión en
+[Releases](https://github.com/aren4sjos3-lab/unified-emu/releases) y sigue la
+[guía de instalación](docs/INSTALAR.md).
+
+Cada push a `main` lanza el flujo **Compilar para Windows** en GitHub Actions; el paquete de
+cada compilación está en la pestaña **Actions** → la ejecución → artefacto
+**UnifiedEmu-windows**. Al crear un tag `vX.Y.Z` se publica además una versión en Releases.
 
 ### Requisitos
 

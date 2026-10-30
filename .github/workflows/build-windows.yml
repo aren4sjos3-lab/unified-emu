@@ -242,6 +242,8 @@ jobs:
     name: Paquete final
     needs: [frontend, project64, dolphin, cemu]
     runs-on: windows-2022
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -269,6 +271,7 @@ jobs:
         run: |
           Copy-Item LICENSE dist/UnifiedEmu/LICENSE.txt
           Copy-Item README.md dist/UnifiedEmu/README.md
+          Copy-Item docs/INSTALAR.md dist/UnifiedEmu/INSTALAR.md
           # Los artefactos no conservan carpetas vacías: Cemu solo es portable si existe "portable".
           New-Item -ItemType Directory -Force dist/UnifiedEmu/emulators/Cemu/portable | Out-Null
           Set-Content dist/UnifiedEmu/emulators/Cemu/portable/LEEME.txt "Cemu guarda aquí su configuración, partidas y claves."
@@ -289,4 +292,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: UnifiedEmu ${{ github.ref_name }}
+          body_path: docs/INSTALAR.md
           files: UnifiedEmu-${{ github.ref_name }}-windows.zip
